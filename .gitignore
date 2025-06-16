@@ -1,0 +1,21 @@
+# 忽略 CMake 构建目录
+cmake-build-*/
+build/
+out/
+
+# 忽略 CLion 特定文件
+.idea/
+*.iml
+
+# 忽略编译生成的文件
+*.o
+*.a
+*.so
+*.dll
+*.exe
+
+# 其他系统或工具文件
+.DS_Store
+Thumbs.db
+
+config/settings.json
