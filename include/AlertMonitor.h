@@ -11,6 +11,7 @@
 #include <thread>
 #include <ctime>
 #include <iomanip>
+#include <vector>
 #include "JsonFetcher.h"
 #include "MailSender.h"
 
@@ -20,7 +21,7 @@ public:
         int check_interval;  // 检查间隔（秒）
         std::string target_url;  // 目标URL
         MailSender::SmtpConfig smtp;  // 邮件配置
-        std::string trigger_key;  // 触发关键词
+        std::vector<std::string> trigger_keywords;  // 触发关键词列表
         std::vector<std::string> recipients;  // 收件人列表
     };
 
@@ -44,12 +45,12 @@ private:
      * @brief 检查JSON数据是否包含触发关键词
      *
      * @param json_data JSON数据
-     * @param trigger_key 触发关键词
+     * @param trigger_keywords 触发关键词数组
      * @return std::optional<std::string> 包含触发关键词的新闻项（如果有）
      */
-    static std::optional<nlohmann::json> checkForTrigger(
+    static std::vector<nlohmann::json> checkForTrigger(
         const nlohmann::json& json_data,
-        const std::string& trigger_key
+        const std::vector<std::string>& trigger_keywords
     );
 
     /**
@@ -63,9 +64,26 @@ private:
     /**
      * @brief 生成邮件内容
      *
-     * @param news_item 新闻项JSON对象
+     * @param news_items 新闻项JSON数组
+     * @param trigger_keywords 触发关键词数组
      * @return std::string 格式化后的邮件内容
      */
-    static std::string generateEmailContent(const nlohmann::json& news_item);
+    static std::string generateEmailContent(
+        const std::vector<nlohmann::json>& news_items,
+        const std::vector<std::string>& trigger_keywords
+    );
+
+    /**
+     * @brief 检查标题是否包含所有关键词
+     *
+     * @param title 新闻标题
+     * @param keywords 关键词数组
+     * @return true 如果标题包含所有关键词
+     * @return false 如果标题不包含所有关键词
+     */
+    static bool containsAllKeywords(
+        const std::string& title,
+        const std::vector<std::string>& keywords
+    );
 };
 #endif //ALERTMONITOR_H
