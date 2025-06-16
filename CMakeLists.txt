@@ -91,11 +91,6 @@ else()
     target_include_directories(lqNotice PRIVATE ${nlohmann_json_INCLUDE_DIRS})
 endif()
 
-# 添加编译定义（如果需要）
-#target_compile_definitions(lqNotice PRIVATE
-        #-D_GLIBCXX_USE_CXX11_ABI=1
-#)
-
 # 设置链接器选项
 set_target_properties(lqNotice PROPERTIES
         LINK_FLAGS "-Wl,--as-needed"
