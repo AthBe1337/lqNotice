@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)  # 降低版本要求以兼容更多系统
+cmake_minimum_required(VERSION 3.15)
 project(lqNotice)
 
 # 设置消息级别为详细
