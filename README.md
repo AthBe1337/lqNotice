@@ -49,8 +49,8 @@ make
     "password": "密码",
     "security": "ssl" //不使用ssl则留空
   },
-  "trigger_keywords": ["总决赛", "获奖名单", "第十六届"],      //跟据实际情况调整
-  "recipients": ["user1@example.com", "user2@example.com"] //跟据实际情况调整
+  "trigger_keywords": ["总决赛", "获奖名单", "第十六届"],      //关键词列表，跟据实际情况调整
+  "recipients": ["user1@example.com", "user2@example.com"] //收件人列表，跟据实际情况调整
 }
 
 ```
