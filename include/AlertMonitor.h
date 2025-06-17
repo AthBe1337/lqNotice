@@ -17,12 +17,22 @@
 
 class AlertMonitor {
 public:
+    /*
+     *20250617 添加serverChan推送支持
+     */
+    struct ServerChanConfig {
+        bool enabled = false;
+        std::string uid;
+        std::string sendkey;
+    };
+
     struct Config {
         int check_interval;  // 检查间隔（秒）
         std::string target_url;  // 目标URL
         MailSender::SmtpConfig smtp;  // 邮件配置
         std::vector<std::string> trigger_keywords;  // 触发关键词列表
         std::vector<std::string> recipients;  // 收件人列表
+        ServerChanConfig server_chan;  // Server酱推送配置
     };
 
     /**
@@ -85,5 +95,33 @@ private:
         const std::string& title,
         const std::vector<std::string>& keywords
     );
+
+    /**
+     * @brief 生成ServerChan推送内容
+     *
+     * @param news_items 新闻项JSON数组
+     * @param trigger_keywords 触发关键词数组
+     * @return std::string 格式化后的ServerChan内容
+     */
+    static std::string generateServerChanContent(
+        const std::vector<nlohmann::json>& news_items,
+        const std::vector<std::string>& trigger_keywords
+    );
+
+    /**
+     * @brief 发送ServerChan推送内容
+     *
+     * @param config ServerChan配置
+     * @param news_items 新闻项JSON数组
+     * @param trigger_keywords 触发关键词数组
+     * @return true 发送成功
+     * @return false 发送失败
+     */
+    static bool sendServerChan(
+        const ServerChanConfig& config,
+        const std::vector<nlohmann::json>& news_items,
+        const std::vector<std::string>& trigger_keywords
+    );
+
 };
 #endif //ALERTMONITOR_H

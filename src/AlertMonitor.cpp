@@ -6,7 +6,14 @@
 #include <sstream>
 #include <iostream>
 #include <algorithm>
-#include <cctype> // for std::tolower
+#include <cctype>
+
+static size_t serverChanWriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+    size_t realsize = size * nmemb;
+    std::string* response = static_cast<std::string*>(userp);
+    response->append(static_cast<char*>(contents), realsize);
+    return realsize;
+}
 
 AlertMonitor::Config AlertMonitor::loadConfig(const std::string& config_path) {
     std::ifstream config_file(config_path);
@@ -42,6 +49,14 @@ AlertMonitor::Config AlertMonitor::loadConfig(const std::string& config_path) {
     std::string security = smtp_json["security"];
     config.smtp.useSsl = (security == "ssl" || security == "tls");
 
+    // 解析Server酱配置
+    if (config_json.contains("server_chan")) {
+        auto& server_chan_json = config_json["server_chan"];
+        config.server_chan.enabled = server_chan_json.value("enabled", false);
+        config.server_chan.uid = server_chan_json.value("uid", "");
+        config.server_chan.sendkey = server_chan_json.value("sendkey", "");
+    }
+
     return config;
 }
 
@@ -63,6 +78,13 @@ void AlertMonitor::run(const Config& config) {
         std::cout << recipient << "; ";
     }
     std::cout << std::endl;
+
+    // 输出Server酱状态
+    if (config.server_chan.enabled) {
+        std::cout << "Server酱推送: 已启用" << std::endl;
+    } else {
+        std::cout << "Server酱推送: 已禁用" << std::endl;
+    }
 
     bool alertTriggered = false;
     int checkCount = 0;
@@ -98,6 +120,16 @@ void AlertMonitor::run(const Config& config) {
                         }
                     }
 
+                    // 发送Server酱推送
+                    if (config.server_chan.enabled) {
+                        std::cout << "发送Server酱推送..." << std::endl;
+                        if (sendServerChan(config.server_chan, triggeredItems, config.trigger_keywords)) {
+                            std::cout << "Server酱推送成功" << std::endl;
+                        } else {
+                            std::cerr << "Server酱推送失败" << std::endl;
+                        }
+                    }
+
                     alertTriggered = true; // 发送后停止监控
                 } else {
                     std::cout << "未检测到包含所有关键词的通知" << std::endl;
@@ -124,7 +156,7 @@ void AlertMonitor::run(const Config& config) {
     std::cout << "\n监控服务已停止" << std::endl;
 }
 
-// 检查标题是否包含所有关键词（不区分大小写）
+// 检查标题是否包含所有关键词
 bool AlertMonitor::containsAllKeywords(
     const std::string& title,
     const std::vector<std::string>& keywords
@@ -270,4 +302,127 @@ std::string AlertMonitor::generateEmailContent(
     content << "此邮件由自动监控系统生成，请勿直接回复。\n";
 
     return content.str();
+}
+
+// 生成Server酱推送内容
+std::string AlertMonitor::generateServerChanContent(
+    const std::vector<nlohmann::json>& news_items,
+    const std::vector<std::string>& trigger_keywords
+) {
+    std::ostringstream content;
+
+    content << "## 蓝桥杯大赛通知提醒\n\n";
+    content << "检测到以下重要通知（包含所有关键词: ";
+    for (size_t i = 0; i < trigger_keywords.size(); ++i) {
+        content << "`" << trigger_keywords[i] << "`";
+        if (i < trigger_keywords.size() - 1) {
+            content << ", ";
+        }
+    }
+    content << "）:\n\n";
+
+    content << "---\n\n";
+
+    for (const auto& item : news_items) {
+        // 标题
+        if (item.contains("title") && item["title"].is_string()) {
+            content << "### " << item["title"].get<std::string>() << "\n";
+        }
+
+        // 创建时间
+        if (item.contains("creatTime") && item["creatTime"].is_string()) {
+            content << "- **发布时间**: " << utcToBeijingTime(item["creatTime"].get<std::string>()) << "\n";
+        }
+
+        // 栏目名称
+        if (item.contains("programaName") && item["programaName"].is_string()) {
+            content << "- **栏目**: " << item["programaName"].get<std::string>() << "\n";
+        }
+
+        // 通知链接
+        if (item.contains("nnid")) {
+            int nnid = item["nnid"].get<int>();
+            content << "- **通知链接**: [点击查看](https://dasai.lanqiao.cn/notices/"
+                    << nnid << ")\n";
+        }
+
+        content << "\n";
+    }
+
+    content << "---\n\n";
+    content << "> 此通知由自动监控系统生成\n";
+
+    return content.str();
+}
+
+// 发送Server酱推送
+bool AlertMonitor::sendServerChan(
+    const ServerChanConfig& config,
+    const std::vector<nlohmann::json>& news_items,
+    const std::vector<std::string>& trigger_keywords
+) {
+    // 构建API URL
+    std::string url = "https://" + config.uid + ".push.ft07.com/send/" + config.sendkey + ".send";
+
+    // 生成推送内容
+    std::string desp = generateServerChanContent(news_items, trigger_keywords);
+
+    // 构建请求JSON
+    nlohmann::json request;
+    request["title"] = "蓝桥杯大赛通知提醒";
+    request["desp"] = desp;
+
+    // 获取第一条通知的标题作为简短描述
+    if (!news_items.empty() && news_items[0].contains("title")) {
+        request["short"] = news_items[0]["title"].get<std::string>();
+    } else {
+        request["short"] = "检测到新的重要通知";
+    }
+
+    // 初始化CURL
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        std::cerr << "初始化CURL失败" << std::endl;
+        return false;
+    }
+
+    // 设置请求选项
+    std::string response;
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    std::string requestBody = request.dump();
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, requestBody.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, requestBody.size());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, serverChanWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+
+    // 执行请求
+    CURLcode res = curl_easy_perform(curl);
+
+    // 清理资源
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    // 检查结果
+    if (res != CURLE_OK) {
+        std::cerr << "Server酱请求失败: " << curl_easy_strerror(res) << std::endl;
+        return false;
+    }
+
+    try {
+        auto jsonResponse = nlohmann::json::parse(response);
+        if (jsonResponse.contains("message") && jsonResponse["message"] == "SUCCESS") {
+            return true;
+        }
+        std::cerr << "Server酱返回错误: " << response << std::endl;
+    } catch (...) {
+        std::cerr << "解析Server酱响应失败: " << response << std::endl;
+    }
+
+    return false;
 }
